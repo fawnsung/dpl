@@ -1,55 +1,55 @@
-# DPL - Data Parallel LLM 推理与资源监控平台
+# DPL - Data-Parallel LLM Inference and Resource Monitoring Platform
 
-一个面向多节点的本地/私有化 LLM 推理编排与监控平台：
-- 前端 WebUI 展示集群资源（CPU/GPU/内存/网络/磁盘）并提供聊天与批处理数据集的交互界面
-- 后端 Gateway 统一代理对上游 LLM（Ollama/OpenAI 兼容）的请求，负载感知并行调度，支持节点锁/解锁
-- 节点 Monitor Agent 采集单机硬件指标并提供锁管理 API，供 Gateway 选路与抢占
-- 附带健康检查脚本便于对 Tailscale 网络与各节点可用性巡检
-
-
-## 功能速览
-
-- 集群资源总览与单机详情：CPU 利用率、内存、网卡吞吐、磁盘吞吐、GPU 利用率/显存/温度/功耗（NVIDIA），支持 Apple Silicon 基础探测
-- 多源 LLM 代理：优先识别 Ollama `/api/chat`，必要时自动回退 `/api/generate`；兼容 OpenAI 风格 `/v1/chat/completions`
-- 负载感知调度：在线、未锁且模型匹配优先，按 GPU→CPU 低负载优先分配；节点锁在会话/任务结束时自动释放，并含兜底解锁
-- 模型管理：列举/显示运行中模型，按需触发预热启动（对 Ollama 走 `/api/generate` 预热）
-- 数据集批处理：上传 JSON 数组，后台并行切分到多节点处理，实时进度与统计，支持优雅停止与结果下载
-- 系统告警：基于 CPU/内存/GPU 指标的阈值规则生成活动告警
-- 健康检查脚本：一键巡检 Tailscale、节点监控 API 与 LLM API 可用性
+A multi-node, local/on-prem LLM inference orchestration and monitoring platform:
+- Frontend Web UI to visualize cluster resources (CPU/GPU/Memory/Network/Disk) and provide a chat and dataset batch-processing interface
+- Backend Gateway that proxies requests to upstream LLMs (Ollama/OpenAI-compatible), performs load-aware parallel scheduling, and supports node lock/unlock
+- Per-node Monitor Agent that collects machine metrics and provides lock management APIs for Gateway routing and preemption
+- A health-check script to quickly inspect Tailscale connectivity and node availability
 
 
-## 目录结构
+## Feature Overview
 
-- `frontend/`：静态 Web 前端（`index.html`、`script.js`），通过 `gateway` 提供静态托管
-- `gateway/`：核心 FastAPI 网关与负载均衡、SSE 转发、数据集任务编排、告警逻辑（`gateway.py`）
-- `monitor_agent/`：单节点 FastAPI 监控代理（`agent.py`），采集硬件指标并提供锁/解锁 API
-- `scripts/`：运维脚本（如 `health_check.py`）
-- `alpaca_data.json`：样例/测试数据（体积较大）
-- `requirements.txt`：Python 依赖
-- `README.md`：本说明文档
+- Cluster overview and single-host details: CPU utilization, memory, NIC throughput, disk throughput, GPU utilization/memory/temperature/power (NVIDIA), with basic detection on Apple Silicon
+- Multi-source LLM proxy: prefer Ollama `/api/chat` and auto-fallback to `/api/generate` when needed; supports OpenAI-style `/v1/chat/completions`
+- Load-aware scheduling: prioritize online, unlocked nodes that match the model; allocate by lowest load preferring GPU → CPU; node locks are auto-released at the end of sessions/tasks with safety fallbacks
+- Model management: list/show running models and trigger on-demand warmup (for Ollama, warm via `/api/generate`)
+- Dataset batch processing: upload a JSON array and process it in parallel across multiple nodes; real-time progress and stats; graceful stop and result download
+- System alerts: threshold-based alerts on CPU/Memory/GPU metrics
+- Health-check script: one-command sweep of Tailscale, node Monitor APIs, and LLM API availability
 
 
-## 环境要求
+## Project Structure
+
+- `frontend/`: static web frontend (`index.html`, `script.js`), statically served by the `gateway`
+- `gateway/`: core FastAPI gateway with load balancing, SSE forwarding, dataset task orchestration, and alert logic (`gateway.py`)
+- `monitor_agent/`: per-node FastAPI monitoring agent (`agent.py`) that collects hardware metrics and provides lock/unlock APIs
+- `scripts/`: ops scripts (e.g., `health_check.py`)
+- `alpaca_data.json`: sample/test data (large file)
+- `requirements.txt`: Python dependencies
+- `README.md`: this document
+
+
+## Prerequisites
 
 - Python 3.10+
-- 建议：NVIDIA 驱动与 CUDA（如需采集 GPU 详细指标），或 Apple Silicon（基础探测）
-- 建议：Tailscale（或其它内网穿透/专线）用于多节点互通
-- 节点本地 LLM 服务：
-  - 优先 Ollama（默认 `http://127.0.0.1:11434`），或其它 OpenAI 兼容端点
+- Recommended: NVIDIA driver and CUDA (for detailed GPU metrics), or Apple Silicon (basic detection)
+- Recommended: Tailscale (or other LAN/VPN) for multi-node connectivity
+- Local LLM service on each node:
+  - Prefer Ollama (default `http://127.0.0.1:11434`) or other OpenAI-compatible endpoints
 
 
-## 安装依赖
+## Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-（Windows PowerShell 建议使用虚拟环境）
+(For Windows PowerShell, using a virtual environment is recommended.)
 
 
-## 配置说明
+## Configuration
 
-所有网关侧节点拓扑在 `gateway/gateway.py` 的 `Settings.NODES` 中定义：
+All gateway-side node topology is defined in `gateway/gateway.py` under `Settings.NODES`:
 
 ```python
 class Settings:
@@ -60,147 +60,147 @@ class Settings:
             "monitor_base_url": "http://127.0.0.1:8001",
             "llm_url": "http://127.0.0.1:11434/api/chat",
         },
-        # ... 更多节点 ...
+        # ... more nodes ...
     ]
 ```
 
-- 将每个节点的监控代理地址（`monitor_base_url`）与 LLM 接口地址（`llm_url`）改为实际可达的地址（可通过 Tailscale/SSH Tunnel 映射）。
-- 如使用 Ollama，`llm_url` 建议填 `/api/chat`；网关在 404/405/501 时将自动回退到 `/api/generate`。
-- 网关监听端口默认为 `8000`，可改 `GATEWAY_PORT`。
+- Update each node's monitoring agent address (`monitor_base_url`) and LLM endpoint (`llm_url`) to reachable addresses (via Tailscale/SSH tunnel, etc.).
+- If using Ollama, `llm_url` is recommended as `/api/chat`; the gateway will auto-fallback to `/api/generate` on 404/405/501.
+- The gateway listens on port `8000` by default; adjust `GATEWAY_PORT` if needed.
 
-节点侧（`monitor_agent/agent.py`）支持通过环境变量/`.env` 指定默认模型与 Ollama 主机：
-- `OLLAMA_MODEL`：优先使用的模型名（否则会通过 `/api/tags` 自动选择）
--	`OLLAMA_HOST`：默认 `http://127.0.0.1:11434`
-- `PORT`：监控代理监听端口（默认 `8001`）
+On each node (`monitor_agent/agent.py`), you can set defaults via environment variables or `.env`:
+- `OLLAMA_MODEL`: preferred model name (otherwise the agent will auto-select via `/api/tags`)
+- `OLLAMA_HOST`: default `http://127.0.0.1:11434`
+- `PORT`: monitor agent listen port (default `8001`)
 
 
-## 启动与访问
+## Run and Access
 
-1) 启动各节点监控代理（在每台节点机器）：
+1) Start the monitor agent on each node:
 ```bash
 cd monitor_agent
 python agent.py
 ```
 
-2) 启动网关（在项目根目录）：
+2) Start the gateway (from project root):
 ```bash
 python -m uvicorn gateway.gateway:app --reload --host 0.0.0.0 --port 8000
 ```
 
-3) 打开前端：
-- 浏览器访问 `http://localhost:8000/`
-- 默认托管 `frontend/` 静态页面
+3) Open the frontend:
+- Visit `http://localhost:8000/` in your browser
+- Static pages under `frontend/` are served by default
 
 
-## 前端使用指南
+## Frontend Usage Guide
 
-- Hosts Overview：显示各节点在线/离线、CPU/内存/GPU 关键指标与运行模型
-- Host Details：单节点多图表实时曲线（CPU、网卡 Mbps、磁盘 MB/s、GPU 温度/功耗/利用率）
-- Chat：选择模型（或自动），与 LLM 进行流式对话；页面会先显示分配到的节点，再逐步输出内容
-- Dataset Processing：
-  - 上传 JSON 文件（数组，每条包含 `instruction` 与可选 `input` 字段）
-  - 可下拉选择处理数据条数；创建任务后实时显示总体进度、节点处理统计、错误明细
-  - 任务结束可下载带 `model_output` 的合并结果
-- Alerts：展示由网关定期检测生成的活动告警
-
-
-## 主要 API（Gateway）
-
-- 节点状态与告警
-  - `GET /api/status/all`：获取节点状态缓存（在线/锁定/指标）
-  - `GET /api/alerts`：获取当前活动告警
-  - `GET /api/cluster/overview`：集群级聚合指标（用于前端多主机折线图）
-
-- 模型管理与会话
-  - `GET /api/models`：列举可用/运行中模型（合并节点上报与 Ollama `/api/tags` 兜底）
-  - `POST /api/models/start/{model}`：在可用节点预热启动指定模型
-  - `POST /api/chat/completions`：统一聊天代理（自动选择最佳节点并转发，SSE 流式返回）
-  - `POST /api/unlock/all`：紧急解锁所有节点（当异常锁死时）
-
-- 数据集批处理（异步）
-  - `POST /api/dataset/upload`：上传 JSON 文件并创建任务，立即返回 `job_id`
-  - `GET /api/dataset/status/{job_id}`：任务简要进度
-  - `GET /api/dataset/detailed-status/{job_id}`：详细统计（成功/失败/未处理、节点统计、时长等）
-  - `POST /api/dataset/stop/{job_id}`：优雅停止任务（等待各节点处理当前条目后退出）
-  - `GET /api/dataset/result/{job_id}`：下载已完成或已停止的任务结果
-  - `POST /api/dataset/cleanup/all`：强制清理卡住任务并尝试解锁所有节点
-
-- 诊断与 Prometheus 代理
-  - `GET /api/debug/info`、`GET /api/debug/diagnosis`：运行时诊断信息
-  - `GET /api/prometheus/query_range`：Prometheus 查询代理（`PROMETHEUS_URL` 可在 `gateway.py` 中调整）
+- Hosts Overview: shows per-host online/offline, CPU/Memory/GPU key metrics, and running models
+- Host Details: single-host real-time charts (CPU, NIC Mbps, Disk MB/s, GPU temperature/power/utilization)
+- Chat: choose a model (or auto) and chat with the LLM via streaming; the page shows the assigned node first, then streams tokens
+- Dataset Processing:
+  - Upload a JSON file (array) where each item has `instruction` and optional `input`
+  - Choose how many items to process; after creating a job, view overall progress, per-node stats, and error details
+  - Download merged results with `model_output` after completion
+- Alerts: show active alerts periodically generated by the gateway
 
 
-## 节点监控代理（Monitor Agent）
+## Primary APIs (Gateway)
 
-- `GET /status`：返回本机锁状态、CPU/内存/GPU 指标、当前模型、网络与磁盘吞吐（基于采样快照计算）
-- `POST /lock`、`POST /unlock`：节点锁管理（网关在任务/会话生命周期内使用）
-- GPU 采集：
-  - NVIDIA：通过 `pynvml` 采集利用率/显存/温度/功耗
-  - macOS：尝试 `powermetrics` 与 PyTorch MPS 可用性做轻量检测
+- Node Status and Alerts
+  - `GET /api/status/all`: get cached node status (online/locked/metrics)
+  - `GET /api/alerts`: get current active alerts
+  - `GET /api/cluster/overview`: cluster-level aggregated metrics (for frontend multi-host charts)
+
+- Model Management and Sessions
+  - `GET /api/models`: list available/running models (merge node reports with Ollama `/api/tags` as fallback)
+  - `POST /api/models/start/{model}`: warm up a specified model on an available node
+  - `POST /api/chat/completions`: unified chat proxy (auto-select best node and forward; returns SSE stream)
+  - `POST /api/unlock/all`: emergency unlock of all nodes (when locks get stuck)
+
+- Dataset Batch Processing (async)
+  - `POST /api/dataset/upload`: upload a JSON file and create a job; returns `job_id` immediately
+  - `GET /api/dataset/status/{job_id}`: brief job progress
+  - `GET /api/dataset/detailed-status/{job_id}`: detailed stats (success/failure/pending, per-node stats, durations, etc.)
+  - `POST /api/dataset/stop/{job_id}`: gracefully stop the job (wait for nodes to finish the current item)
+  - `GET /api/dataset/result/{job_id}`: download results of a completed or stopped job
+  - `POST /api/dataset/cleanup/all`: forcibly clean up stuck jobs and attempt to unlock all nodes
+
+- Diagnostics and Prometheus Proxy
+  - `GET /api/debug/info`, `GET /api/debug/diagnosis`: runtime diagnostics
+  - `GET /api/prometheus/query_range`: Prometheus query proxy (`PROMETHEUS_URL` can be changed in `gateway.py`)
 
 
-## 健康检查脚本
+## Monitor Agent (Per Node)
 
-`scripts/health_check.py` 支持巡检：
-- Tailscale 运行状态
-- 各节点监控 API 与 LLM API 可用性
+- `GET /status`: returns lock state, CPU/Memory/GPU metrics, current model, and network/disk throughput (computed via sampled snapshots)
+- `POST /lock`, `POST /unlock`: node lock management (used by the gateway during session/task lifecycles)
+- GPU metrics:
+  - NVIDIA: via `pynvml` for utilization/memory/temperature/power
+  - macOS: attempt lightweight detection via `powermetrics` and PyTorch MPS availability
 
-示例命令：
+
+## Health-Check Script
+
+`scripts/health_check.py` can inspect:
+- Tailscale runtime status
+- Node monitor APIs and LLM API availability
+
+Examples:
 ```bash
-python scripts/health_check.py           # 单次巡检
-python scripts/health_check.py -c -i 60  # 持续巡检，每 60 秒一次
+python scripts/health_check.py           # single run
+python scripts/health_check.py -c -i 60  # continuous run every 60 seconds
 ```
 
-注意：脚本中 `NODES` 的 IP/端口需按实际环境调整。
+Note: adjust `NODES` IP/ports in the script to match your environment.
 
 
-## 数据集格式示例
+## Dataset Format Example
 
-上传的 JSON 文件需为数组，每个元素示例：
+Uploaded JSON must be an array; each element example:
 
 ```json
 {
-  "instruction": "请为下面标题写一段简介",
-  "input": "数据并行推理平台设计"
+  "instruction": "Write a short introduction for the title below",
+  "input": "Design of a Data-Parallel Inference Platform"
 }
 ```
 
-结果下载将为与原始条目一一对应的数组，并在每条增加 `model_output` 字段（成功时为上游返回对象；失败时为 `{ "error": "..." }`）。
+The downloaded results will be an array one-to-one with the originals, with an added `model_output` field per item (for success, it is the upstream return object; for failure, it is `{ "error": "..." }`).
 
 
-## 常见问题（FAQ）
+## FAQ
 
-- 前端显示所有主机离线？
-  - 检查网关是否启动并监听 `8000`；确认 `Settings.NODES` 的 `monitor_base_url` 可达；确认各节点监控代理已启动。
+- Frontend shows all hosts offline?
+  - Check that the gateway is running and listening on `8000`; verify `monitor_base_url` in `Settings.NODES` is reachable; ensure each node's monitor agent is running.
 
-- 指定模型却提示未找到？
-  - 网关会尝试在可用节点通过 `/api/generate` 预热启动该模型；确保节点的 Ollama 已拉取对应模型镜像或有网络能力自动拉取。
+- Specified model not found?
+  - The gateway will try to warm up the model on an available node via `/api/generate`. Make sure the node's Ollama has pulled the model image, or has network access to pull it automatically.
 
-- 节点锁住不释放？
-  - 网关在流式结束或任务收尾会解锁，若 [DONE] 丢失会在 `finally` 兜底；仍异常时调用 `POST /api/unlock/all`。
+- Node remains locked?
+  - The gateway unlocks on stream end or task teardown; if `[DONE]` is lost, it unlocks in `finally` as a fallback. If it still misbehaves, call `POST /api/unlock/all`.
 
-- GPU 指标为空？
-  - NVIDIA：确认驱动安装并可被 `pynvml` 访问；macOS 上仅提供有限探测。
-
-
-## 安全与部署建议
-
-- 生产环境务必收敛 CORS 白名单与前端托管域名
-- 网关与监控代理建议放置在受控内网，通过 Tailscale/VPN 访问
-- 对外暴露时考虑在网关前加反向代理与鉴权（如 OAuth/Token）
+- GPU metrics are empty?
+  - NVIDIA: ensure drivers are installed and accessible by `pynvml`; on macOS only limited detection is provided.
 
 
-## Roadmap（可选）
+## Security and Deployment Recommendations
 
-- 更完善的调度策略（结合历史时延、并发度、自适应权重）
-- 模型多副本并行与一致性归并
-- 更丰富的告警规则与通知通道（Webhook/Email）
-- 前端可视化与多集群视图增强
+- In production, strictly limit the CORS whitelist and the domain serving the frontend
+- Place the gateway and monitor agents on a controlled internal network, accessed via Tailscale/VPN
+- If exposed externally, consider a reverse proxy and authentication (e.g., OAuth/Token) in front of the gateway
+
+
+## Roadmap (Optional)
+
+- More advanced scheduling (historical latency, concurrency, adaptive weighting)
+- Multi-replica inference and consistency merging
+- Richer alert rules and notification channels (Webhook/Email)
+- Enhanced frontend visualizations and multi-cluster views
 
 
 ## License
 
-本项目依赖的第三方组件按其各自许可证分发。项目自身许可证请根据需求补充。
+Third-party components are distributed under their respective licenses. Please add a license for this project as needed.
 
 
 # dpl
