@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data-Parallel LLM Resource Monitoring Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        success: '#00B42A',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        info: '#86909C',
+                        dark: '#1D2129',
+                        light: '#F2F3F5'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .transition-custom {
+                transition: all 0.3s ease;
+            }
+            .hover-scale {
+                transition: transform 0.2s ease-in-out;
+            }
+            .hover-scale:hover {
+                transform: scale(1.02);
+            }
+            .gradient-bg {
+                background: linear-gradient(135deg, #165DFF 0%, #4080FF 100%);
+            }
+        }
+    </style>
+    <style>
+        .card-shadow {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+        .hover-scale {
+            transition: transform 0.2s ease-in-out;
+        }
+        .hover-scale:hover {
+            transform: scale(1.02);
+        }
+        
+        /* System resource monitoring enhanced styles */
+        .metric-btn {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .metric-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .metric-btn:active {
+            transform: translateY(0);
+        }
+        
+        .gradient-panel {
+            background: linear-gradient(135deg, var(--tw-gradient-from), var(--tw-gradient-to));
+            backdrop-filter: blur(10px);
+        }
+        
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .chart-loading {
+            animation: fadeInOut 2s ease-in-out infinite;
+        }
+        
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        
+        .stat-card {
+            transition: all 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .info-panel {
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .pulse-border {
+            animation: pulse-border 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(59, 130, 246, 0.3); }
+            50% { border-color: rgba(59, 130, 246, 0.6); }
+        }
+        
+        /* Gradient text */
+        .gradient-text {
+            background: linear-gradient(135deg, #165DFF, #00B42A);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Data status indicator */
+        .status-online::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #00B42A;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 text-dark min-h-screen flex flex-col">
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <!-- Left: Logo and Title -->
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fa fa-microchip text-primary text-2xl mr-2"></i>
+                    </div>
+                    <h1 class="text-xl font-semibold text-dark">LLM Inference & Resource Monitoring</h1>
+                </div>
+                
+                <!-- Center: Host status indicators -->
+                <div class="hidden md:flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <span id="host-status-1" class="w-3 h-3 rounded-full bg-gray-300 mr-2 animate-pulse"></span>
+                        <span class="text-sm">Host 1</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span id="host-status-2" class="w-3 h-3 rounded-full bg-gray-300 mr-2 animate-pulse"></span>
+                        <span class="text-sm">Host 2</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span id="host-status-3" class="w-3 h-3 rounded-full bg-gray-300 mr-2 animate-pulse"></span>
+                        <span class="text-sm">Host 3</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span id="host-status-4" class="w-3 h-3 rounded-full bg-gray-300 mr-2 animate-pulse"></span>
+                        <span class="text-sm">Host 4</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span id="host-status-5" class="w-3 h-3 rounded-full bg-gray-300 mr-2 animate-pulse"></span>
+                        <span class="text-sm">Host 5</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span id="host-status-6" class="w-3 h-3 rounded-full bg-gray-300 mr-2 animate-pulse"></span>
+                        <span class="text-sm">Host 6</span>
+                    </div>
+                </div>
+                
+                <!-- Right: Actions -->
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-custom">
+                        <i class="fa fa-refresh text-gray-600"></i>
+                    </button>
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-custom relative">
+                        <i class="fa fa-bell text-gray-600"></i>
+                        <span class="absolute top-2 right-2 w-2 h-2 bg-danger rounded-full"></span>
+                    </button>
+                    <button class="p-2 rounded-full hover:bg-gray-100 transition-custom">
+                        <i class="fa fa-cog text-gray-600"></i>
+                        </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex-shrink-0 hidden md:block">
+            <nav class="h-full overflow-y-auto scrollbar-hide">
+                <div class="px-4 py-6">
+                    <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Monitoring Views</h2>
+                    <ul id="main-nav" class="mt-4 space-y-1">
+                        <li>
+                            <a href="#dashboard" class="group nav-link flex items-center px-3 py-2 text-sm font-medium rounded-md bg-primary/10 text-primary">
+                                <i class="fa fa-tachometer w-5 h-5 mr-3 text-primary"></i>
+                                <span>Hosts Overview</span>
+                            </a>
+                        </li>
+                        <li>
+                            <div class="group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 transition-custom cursor-pointer">
+                                <div class="flex items-center">
+                                    <i class="fa fa-server w-5 h-5 mr-3 text-gray-500 group-hover:text-primary"></i>
+                                    <span>Host Details</span>
+                                </div>
+                                <i class="fa fa-angle-down text-gray-500"></i>
+                            </div>
+                            <ul class="pl-8 mt-1 space-y-1">
+                                <li>
+                                    <a href="#host1" class="nav-link block px-3 py-2 text-sm text-gray-600 hover:text-primary rounded-md transition-custom">Host 1</a>
+                                </li>
+                                <li>
+                                    <a href="#host2" class="nav-link block px-3 py-2 text-sm text-gray-600 hover:text-primary rounded-md transition-custom">Host 2</a>
+                                </li>
+                                <li>
+                                    <a href="#host3" class="nav-link block px-3 py-2 text-sm text-gray-600 hover:text-primary rounded-md transition-custom">Host 3</a>
+                                </li>
+                                <li>
+                                    <a href="#host4" class="nav-link block px-3 py-2 text-sm text-gray-600 hover:text-primary rounded-md transition-custom">Host 4</a>
+                                </li>
+                                <li>
+                                    <a href="#host5" class="nav-link block px-3 py-2 text-sm text-gray-600 hover:text-primary rounded-md transition-custom">Host 5</a>
+                                </li>
+                                <li>
+                                    <a href="#host6" class="nav-link block px-3 py-2 text-sm text-gray-600 hover:text-primary rounded-md transition-custom">Host 6</a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+                
+                                <div class="px-4 py-6 border-t border-gray-200">
+                    <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System</h2>
+                    <ul class="mt-4 space-y-1">
+                        <li>
+                            <a href="#alerts" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 transition-custom">
+                                <i class="fa fa-bell w-5 h-5 mr-3 text-gray-500 group-hover:text-primary"></i>
+                                <span>Alerts</span>
+                                <span id="alert-count-badge" class="ml-auto bg-danger text-white text-xs font-bold px-2 py-0.5 rounded-full hidden">0</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#dataset" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 transition-custom">
+                                <i class="fa fa-database w-5 h-5 mr-3 text-gray-500 group-hover:text-primary"></i>
+                                <span>Dataset Processing</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#chat" class="nav-link group flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100 transition-custom">
+                                <i class="fa fa-comments w-5 h-5 mr-3 text-gray-500 group-hover:text-primary"></i>
+                                <span>Chat</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-6">
+            <div id="content-container" class="bg-white rounded-2xl card-shadow p-8">
+                <!-- Cluster Overview (default) -->
+                <section id="dashboard" class="content-section">
+                     <!-- Page Title and Time Range Selection -->
+                     <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+                        <div>
+                            <h2 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-gray-900">Hosts Overview</h2>
+                            <p class="mt-1 text-sm text-gray-600">Monitor and analyze LLM resource usage</p>
+                            </div>
+                        <div class="mt-4 md:mt-0 flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="last-update-time" class="font-medium">-</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-6">
+                     <!-- Host cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 my-6">
+                        <!-- Host 1 -->
+                        <div id="host-card-1" class="bg-gray-50 rounded-xl p-6 border hover-scale">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 class="text-lg font-bold">Host 1</h3>
+                                    <p class="text-gray-500 text-sm">100.76.208.127</p>
+                                </div>
+                                <div id="host-tick-1" class="bg-gray-100 p-2 rounded-lg">
+                                    <i class="fa fa-spinner fa-spin text-gray-400"></i>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">CPU Usage</p>
+                                    <p id="host-card-1-cpu" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">Memory Usage</p>
+                                    <p id="host-card-1-mem" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">GPU Utilization</p>
+                                    <p id="host-card-1-gpu-util" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">GPU Memory Usage</p>
+                                    <p id="host-card-1-gpu-mem" class="text-lg font-bold">- %</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span id="host-card-1-model" class="text-xs text-gray-500">Model: -</span>
+                                <a href="#host1" class="text-primary text-sm hover:text-primary/80 nav-link">Details</a>
+                            </div>
+                </div>
+                
+                        <!-- Host 2 -->
+                        <div id="host-card-2" class="bg-gray-50 rounded-xl p-6 border hover-scale">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 class="text-lg font-bold">Host 2</h3>
+                                    <p class="text-gray-500 text-sm">100.118.49.57</p>
+                                </div>
+                                <div id="host-tick-2" class="bg-gray-100 p-2 rounded-lg">
+                                     <i class="fa fa-spinner fa-spin text-gray-400"></i>
+                                </div>
+                            </div>
+                             <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">CPU Usage</p>
+                                    <p id="host-card-2-cpu" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">Memory Usage</p>
+                                    <p id="host-card-2-mem" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">GPU Utilization</p>
+                                    <p id="host-card-2-gpu-util" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">GPU Memory Usage</p>
+                                    <p id="host-card-2-gpu-mem" class="text-lg font-bold">- %</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span id="host-card-2-model" class="text-xs text-gray-500">Model: -</span>
+                                <a href="#host2" class="text-primary text-sm hover:text-primary/80 nav-link">Details</a>
+                            </div>
+                        </div>
+
+                        <!-- Host 3 -->
+                        <div id="host-card-3" class="bg-gray-50 rounded-xl p-6 border hover-scale">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 class="text-lg font-bold">Host 3</h3>
+                                    <p class="text-gray-500 text-sm">100.99.253.87</p>
+                                </div>
+                                <div id="host-tick-3" class="bg-gray-100 p-2 rounded-lg">
+                                     <i class="fa fa-spinner fa-spin text-gray-400"></i>
+                                </div>
+                            </div>
+                             <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">CPU Usage</p>
+                                    <p id="host-card-3-cpu" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">Memory Usage</p>
+                                    <p id="host-card-3-mem" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">GPU Utilization</p>
+                                    <p id="host-card-3-gpu-util" class="text-lg font-bold">- %</p>
+                                </div>
+                                <div class="bg-white rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-1">GPU Memory Usage</p>
+                                    <p id="host-card-3-gpu-mem" class="text-lg font-bold">- %</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span id="host-card-3-model" class="text-xs text-gray-500">Model: -</span>
+                                <a href="#host3" class="text-primary text-sm hover:text-primary/80 nav-link">Details</a>
+                            </div>
+                    </div>
+                    </div>
+                    
+                     <!-- Cluster Resource Overview -->
+                    <div class="bg-gray-50 p-6 rounded-lg border mt-8">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">Cluster Resource Overview</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded-lg shadow h-64">
+                                <h3 class="font-semibold mb-2">CPU Usage by Host</h3>
+                                <div class="relative h-full">
+                                    <canvas id="cluster-cpu-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow h-64">
+                                <h3 class="font-semibold mb-2">Memory Usage by Host</h3>
+                                <div class="relative h-full">
+                                    <canvas id="cluster-mem-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow h-64">
+                                <h3 class="font-semibold mb-2">Max NIC Throughput by Host</h3>
+                                <div class="relative h-full">
+                                    <canvas id="cluster-nic-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow h-64">
+                                <h3 class="font-semibold mb-2">Max Disk R/W by Host</h3>
+                                <div class="relative h-full">
+                                    <canvas id="cluster-disk-line"></canvas>
+                                </div>
+                            </div>
+                       </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================================== -->
+                <!-- ========================= Host 1 Details =============================== -->
+                <!-- ===================================================================== -->
+                <section id="host1" class="content-section hidden">
+                    <!-- Page Title -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Host 1 Details</h2>
+                            <p class="text-sm text-gray-500">Node-01 | Tailscale: 100.76.208.127 | Live Monitoring</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="host1-last-update" class="font-medium">--</span></span>
+                            <button class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-white hover:bg-primary/90 transition-custom">
+                                <i class="fa fa-refresh mr-2"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Data Overview Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">CPU Usage</h3><p class="text-2xl font-bold" id="host1-cpu-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">Memory Usage</h3><p class="text-2xl font-bold" id="host1-mem-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">GPU Utilization</h3><p class="text-2xl font-bold" id="host1-gpu-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">VRAM Usage</h3><p class="text-2xl font-bold" id="host1-gpumem-usage">--</p></div>
+                        </div>
+                        
+                    <!-- Live charts (from API metrics) -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">CPU Usage (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-1-cpu-line"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">Bandwidth Total Mbps (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-1-nic-line"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">Disk Total MB/s (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-1-disk-line"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                        
+                    <!-- GPU Performance -->
+                    <div class="bg-gray-50 p-6 rounded-lg border">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">GPU Performance</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Utilization (live)</h3>
+                                <div class="relative h-full">
+                                    <canvas id="host-1-gpu-util-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Power (W) (live)</h3>
+                                <div class="relative h-full">
+                                    <canvas id="host-1-gpu-power-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Avg Temperature (°C)</h3>
+                                <div class="relative h-[calc(100%-1.5rem)]">
+                                    <canvas id="host-1-gpu-temp-donut"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================================== -->
+                <!-- ========================= Host 2 Details =============================== -->
+                <!-- ===================================================================== -->
+                <section id="host2" class="content-section hidden">
+                    <!-- Page Title -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Host 2 Details</h2>
+                            <p class="text-sm text-gray-500">Node-02 | Tailscale: 100.118.49.57 | Live Monitoring</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="host2-last-update" class="font-medium">--</span></span>
+                            <button class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-white hover:bg-primary/90 transition-custom">
+                                <i class="fa fa-refresh mr-2"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Summary Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">CPU Usage</h3><p class="text-2xl font-bold" id="host2-cpu-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">Memory Usage</h3><p class="text-2xl font-bold" id="host2-mem-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">GPU Utilization</h3><p class="text-2xl font-bold" id="host2-gpu-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">VRAM Usage</h3><p class="text-2xl font-bold" id="host2-gpumem-usage">--</p></div>
+                        </div>
+                        
+                    <!-- Live charts (from API metrics) -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">CPU Usage (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-2-cpu-line"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">Bandwidth Total Mbps (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-2-nic-line"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">Disk Total MB/s (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-2-disk-line"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                        
+                    <!-- GPU Performance -->
+                    <div class="bg-gray-50 p-6 rounded-lg border">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">GPU Performance</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Utilization (live)</h3>
+                                <div class="relative h-full">
+                                    <canvas id="host-2-gpu-util-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Power (W) (live)</h3>
+                                <div class="relative h-full">
+                                    <canvas id="host-2-gpu-power-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Avg Temperature (°C)</h3>
+                                <div class="relative h-[calc(100%-1.5rem)]">
+                                    <canvas id="host-2-gpu-temp-donut"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================================== -->
+                <!-- ========================= Host 3 Details =============================== -->
+                <!-- ===================================================================== -->
+                <section id="host3" class="content-section hidden">
+                   <!-- Page Title -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Host 3 Details</h2>
+                            <p class="text-sm text-gray-500">Node-03 | Tailscale: [IP Address] | Live Monitoring</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="host3-last-update" class="font-medium">--</span></span>
+                            <button class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-white hover:bg-primary/90 transition-custom">
+                                <i class="fa fa-refresh mr-2"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Summary Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">CPU Usage</h3><p class="text-2xl font-bold" id="host3-cpu-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">Memory Usage</h3><p class="text-2xl font-bold" id="host3-mem-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">GPU Utilization</h3><p class="text-2xl font-bold" id="host3-gpu-usage">--</p></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><h3 class="font-semibold text-gray-600">VRAM Usage</h3><p class="text-2xl font-bold" id="host3-gpumem-usage">--</p></div>
+                                </div>
+
+                    <!-- Live charts (from API metrics) -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">CPU Usage (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-3-cpu-line"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">Bandwidth Total Mbps (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-3-nic-line"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow h-56">
+                            <h3 class="font-semibold mb-2">Disk Total MB/s (live)</h3>
+                            <div class="relative h-full">
+                                <canvas id="host-3-disk-line"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GPU Performance -->
+                    <div class="bg-gray-50 p-6 rounded-lg border">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">GPU Performance</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Utilization (live)</h3>
+                                <div class="relative h-full">
+                                    <canvas id="host-3-gpu-util-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Power (W) (live)</h3>
+                                <div class="relative h-full">
+                                    <canvas id="host-3-gpu-power-line"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg shadow h-56">
+                                <h3 class="font-semibold mb-2">GPU Avg Temperature (°C)</h3>
+                                <div class="relative h-[calc(100%-1.5rem)]">
+                                    <canvas id="host-3-gpu-temp-donut"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================================== -->
+                <!-- ========================= Host 4 Details =============================== -->
+                <!-- ===================================================================== -->
+                <section id="host4" class="content-section hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Host 4 Details</h2>
+                            <p class="text-sm text-gray-500">Live Monitoring</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="host4-last-update" class="font-medium">--</span></span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg border text-center text-gray-500">
+                        No data for this host (not configured or offline).
+                    </div>
+                </section>
+
+                <!-- ===================================================================== -->
+                <!-- ========================= Host 5 Details =============================== -->
+                <!-- ===================================================================== -->
+                <section id="host5" class="content-section hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Host 5 Details</h2>
+                            <p class="text-sm text-gray-500">Live Monitoring</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="host5-last-update" class="font-medium">--</span></span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg border text-center text-gray-500">
+                        No data for this host (not configured or offline).
+                    </div>
+                </section>
+
+                <!-- ===================================================================== -->
+                <!-- ========================= Host 6 Details =============================== -->
+                <!-- ===================================================================== -->
+                <section id="host6" class="content-section hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Host 6 Details</h2>
+                            <p class="text-sm text-gray-500">Live Monitoring</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm text-gray-600">Updated at: <span id="host6-last-update" class="font-medium">--</span></span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-lg border text-center text-gray-500">
+                        No data for this host (not configured or offline).
+                    </div>
+                </section>
+
+                <!-- Chat -->
+                <section id="chat" class="content-section hidden">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+                        <div>
+                            <h2 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-gray-900">Chat</h2>
+                            <p class="mt-1 text-sm text-gray-600">Interact with the model</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-50 rounded-xl p-5 border flex flex-col" style="height: 600px;">
+                        <div id="chat-messages" class="flex-grow overflow-y-auto p-4 bg-white rounded-lg space-y-4 mb-4">
+                            <!-- Messages will be added via JS -->
+                            <div class="flex justify-start">
+                                <div class="max-w-lg px-4 py-2 rounded-lg bg-gray-200 text-gray-800">
+                                    Hello! How can I help you?
+                            </div>
+                            </div>
+                        </div>
+                        <div class="pt-4 border-t border-gray-200">
+                            <div class="flex items-center space-x-2">
+                                <select id="model-selector" class="appearance-none bg-white border border-gray-300 rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary flex-shrink-0" style="min-width: 200px;">
+                                    <option value="">Auto-select model</option>
+                                </select>
+                                <button id="reset-locks-button" class="px-3 py-2 text-sm font-medium rounded-md bg-danger text-white hover:bg-danger/90 transition-custom">
+                                    <i class="fa fa-unlock mr-1"></i>Unlock
+                                </button>
+                                <textarea id="chat-input" placeholder="Type your question..." class="flex-grow border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary" rows="1"></textarea>
+                                <button id="send-button" class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-white hover:bg-primary/90 transition-custom disabled:bg-primary/50">
+                                    <i class="fa fa-paper-plane mr-2"></i>Send
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Dataset Processing -->
+                <section id="dataset" class="content-section hidden">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+                        <div>
+                            <h2 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-gray-900">Dataset Processing</h2>
+                            <p class="mt-1 text-sm text-gray-600">Batch process and analyze datasets</p>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Left: Upload & Controls -->
+                        <div class="lg:col-span-1 bg-gray-50 rounded-xl p-5 border space-y-6">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">1. Upload File</h3>
+                                <label for="dataset-upload-input" id="dataset-upload-label" class="mt-2 flex justify-center w-full h-32 px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md cursor-pointer hover:border-primary transition-custom">
+                                    <div class="space-y-1 text-center">
+                                        <i class="fa fa-upload mx-auto h-12 w-12 text-gray-400"></i>
+                                        <div class="flex text-sm text-gray-600">
+                                            <p class="pl-1">Click to select or drag and drop <span class="font-medium text-primary">.json</span> file here</p>
+                                        </div>
+                                        <p class="text-xs text-gray-500" id="dataset-upload-text">Single JSON file only</p>
+                                    </div>
+                                    <input id="dataset-upload-input" type="file" class="sr-only" accept=".json">
+                                </label>
+                            </div>
+
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">2. Select Range</h3>
+                                <div id="data-selection-container" class="mt-2 space-y-2 hidden">
+                                    <input type="range" id="data-count-slider" min="1" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                    <div class="flex justify-between text-sm">
+                                        <input type="number" id="data-count-input" min="1" max="100" value="100" class="w-24 border border-gray-300 rounded-md p-1 text-sm text-center">
+                                        <span id="data-count-total" class="text-gray-500">/ 100 (100%)</span>
+                                    </div>
+                            </div>
+                                <p id="data-selection-placeholder" class="text-sm text-gray-500 mt-2">Upload a file to select the range.</p>
+                            </div>
+                            
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">3. Start Job</h3>
+                                <button id="dataset-upload-button" disabled class="mt-2 w-full py-2 text-sm font-medium rounded-md bg-primary text-white hover:bg-primary/90 transition-custom disabled:bg-primary/50 disabled:cursor-not-allowed flex items-center justify-center">
+                                    <i class="fa fa-play-circle mr-2"></i>Upload and Start
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Right: Job Status & Results -->
+                        <div class="lg:col-span-2 bg-gray-50 rounded-xl p-5 border">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Job Status</h3>
+                            <div id="job-status-container" class="space-y-4">
+                                <!-- Global Progress -->
+                                <div>
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-medium text-gray-700">Overall Progress</span>
+                                        <span id="global-progress-text" class="text-sm text-gray-500">No job yet</span>
+                        </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                        <div id="global-progress-bar" class="bg-primary h-2.5 rounded-full transition-custom" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                                <!-- Detailed Status -->
+                                 <div id="detailed-status-container" class="p-4 bg-white rounded-lg hidden border">
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                                        <div>
+                                            <p class="text-xs text-gray-500">Status</p>
+                                            <p id="detailed-status-badge" class="font-semibold text-gray-800">-</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs text-gray-500">Success/Errors</p>
+                                            <p class="font-semibold text-gray-800"><span id="stat-success" class="text-success">0</span> / <span id="stat-errors" class="text-danger">0</span></p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs text-gray-500">Runtime</p>
+                                            <p id="stat-runtime" class="font-semibold text-gray-800">0s</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs text-gray-500">Progress</p>
+                                            <p id="stat-progress" class="font-semibold text-gray-800">0/0</p>
+                                        </div>
+                                    </div>
+                                    <div id="error-details" class="mt-4 hidden">
+                                        <h4 class="text-sm font-medium text-danger mb-2">Error Details:</h4>
+                                        <div id="error-list" class="text-xs text-danger bg-danger/10 p-2 rounded-md space-y-1"></div>
+                                    </div>
+                                 </div>
+
+                                <!-- Node Reports -->
+                                <div>
+                                    <h4 class="text-sm font-medium text-gray-700">Node Reports</h4>
+                                    <div id="node-reports-container" class="mt-2 space-y-3">
+                                        <p class="text-sm text-gray-500">Waiting for job to be assigned to nodes...</p>
+                                    </div>
+                </div>
+
+                                <!-- Actions -->
+                                <div class="flex space-x-2 pt-4 border-t border-gray-200">
+                                    <button id="stop-button" class="hidden w-full py-2 text-sm font-medium rounded-md bg-warning text-white hover:bg-warning/90 transition-custom flex items-center justify-center">
+                                        <i class="fa fa-stop-circle mr-2"></i>Stop Job
+                                    </button>
+                                    <button id="result-download-button" class="hidden w-full py-2 text-sm font-medium rounded-md bg-success text-white hover:bg-success/90 transition-custom flex items-center justify-center">
+                                        <i class="fa fa-download mr-2"></i>Download Results
+                                    </button>
+                                </div>
+                            </div>
+                </div>
+            </div>
+                    </div>
+                </section>
+
+            <!-- System Alerts -->
+            <section id="alerts" class="content-section hidden">
+                 <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-dark">System Alerts</h3>
+                    <div class="flex items-center space-x-2">
+                      <span id="active-alerts-chip" class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full hidden">
+                        0 active alerts
+                      </span>
+                      <button class="text-gray-500 hover:text-primary">
+                        <i class="fa fa-ellipsis-h"></i>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div class="overflow-x-auto bg-gray-50 p-5 rounded-xl border">
+                    <table class="min-w-full table-auto text-sm">
+                      <thead class="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Level</th>
+                          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Message</th>
+                          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Host</th>
+                          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
+                          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                          <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody id="alerts-table-body" class="bg-white divide-y divide-gray-100 align-middle">
+                        <!-- Alerts will be inserted by JS -->
+                         <tr id="no-alerts-row">
+                            <td colspan="6" class="text-center py-10">
+                                <div class="flex flex-col items-center text-gray-400">
+                                    <i class="fa fa-check-circle text-4xl text-success mb-2"></i>
+                                    <p class="font-medium">All good</p>
+                                    <p class="text-sm">No active alerts</p>
+                                </div>
+                            </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+            </section>
+            </div>
+
+
+    </main>
+    </div>
+
+    <!-- Original UI Container (Initially Hidden) -->
+    <div id="legacy-ui-container" class="hidden"></div>
+
+    <!-- JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html> 
